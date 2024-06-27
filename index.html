@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Object Detection</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #canvas { border: 1px solid #000; }
+        table { border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Realtime Object Detection</h1>
+    <canvas id="canvas" width="640" height="480"></canvas>
+    <table id="detectionTable">
+        <thead>
+            <tr>
+                <th width="100">Detected Object</th>
+                <th width="100">Probability</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script>
+        const video = document.createElement('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const detectionTableBody = document.querySelector('#detectionTable tbody');
+        const FPS = 30; // Frames per second
+        const FRAME_INTERVAL = 1000 / FPS;
+
+        async function setupCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resolve(video);
+                };
+            });
+        }
+
+        function drawPredictions(predictions) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.drawImage(video, 0, 0, ctx.canvas.width, ctx.canvas.height);
+            predictions.forEach(prediction => {
+                const [x, y, width, height] = prediction.bbox;
+                ctx.strokeStyle = '#00F12F';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(x, y, width, height);
+                ctx.fillStyle = '#00F12F';
+                ctx.font = '18px Arial';
+                ctx.fillText(`${prediction.class} ${(prediction.score * 100).toFixed(2)}%`, x, y > 10 ? y - 5 : 10);
+            });
+        }
+
+        function updateDetectionTable(predictions) {
+            detectionTableBody.innerHTML = '';
+            predictions.forEach(prediction => {
+                const row = detectionTableBody.insertRow();
+                const cellObject = row.insertCell(0);
+                const cellProbability = row.insertCell(1);
+                cellObject.textContent = prediction.class;
+                cellProbability.textContent = `${(prediction.score * 100).toFixed(2)}%`;
+            });
+        }
+
+        async function detectObjects() {
+            const model = await cocoSsd.load();
+            let lastDetectionTime = 0;
+
+            async function detectFrame(currentTime) {
+                if (currentTime - lastDetectionTime >= FRAME_INTERVAL) {
+                    const predictions = await model.detect(video);
+                    drawPredictions(predictions);
+                    updateDetectionTable(predictions);
+                    lastDetectionTime = currentTime;
+                }
+                requestAnimationFrame(detectFrame);
+            }
+
+            requestAnimationFrame(detectFrame);
+        }
+
+        (async function() {
+            await setupCamera();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            await detectObjects();
+        })();
+    </script>
+</body>
+</html>
